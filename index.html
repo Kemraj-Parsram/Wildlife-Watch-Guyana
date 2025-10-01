@@ -1,576 +1,529 @@
-<!DOCTYPE html>
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wildlife Watch Guyana</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="manifest" href="./manifest.json">
-    <meta name="theme-color" content="#22c55e">
-    <link rel="apple-touch-icon" href="https://placehold.co/192x192/22c55e/ffffff?text=WWG">
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/exif-js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <style>
         body {
             font-family: 'Inter', sans-serif;
         }
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            display: none; /* Hidden by default */
+        /* Custom styles for the install button and toast notifications */
+        #install-button {
+            /* display: none; */ /* Removed to make the button visible by default */
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            opacity: 0;
+        .toast {
             visibility: hidden;
-            transition: opacity 0.3s ease, visibility 0.3s ease;
-        }
-        .modal-overlay.visible {
-            opacity: 1;
-            visibility: visible;
-        }
-        .modal-content {
-            background: white;
-            padding: 2rem;
-            border-radius: 0.5rem;
-            max-width: 500px;
-            width: 90%;
-            position: relative;
-            transform: scale(0.9);
-            transition: transform 0.3s ease;
-        }
-        .modal-overlay.visible .modal-content {
-            transform: scale(1);
-        }
-        .modal-close {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            cursor: pointer;
-            font-size: 1.5rem;
-            color: #666;
-        }
-        #toast-notification {
+            min-width: 250px;
+            margin-left: -125px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 16px;
             position: fixed;
-            bottom: -100px;
+            z-index: 1;
             left: 50%;
-            transform: translateX(-50%);
-            background-color: #2d3748;
-            color: white;
-            padding: 1rem 1.5rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transition: bottom 0.5s ease-in-out;
-            z-index: 2000;
-        }
-        #toast-notification.show {
             bottom: 30px;
+            opacity: 0;
+            transition: opacity 0.5s, visibility 0.5s, bottom 0.5s;
+        }
+        .toast.show {
+            visibility: visible;
+            opacity: 1;
+        }
+        .toast.error {
+            background-color: #ef4444; /* red-500 */
+        }
+         .toast.success {
+            background-color: #22c55e; /* green-500 */
         }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
 
-    <div class="container mx-auto p-4 max-w-lg">
-        <header class="bg-green-500 text-white p-4 rounded-lg shadow-md mb-6 text-center">
-            <h1 class="text-3xl font-bold">Wildlife Watch Guyana</h1>
-            <p class="text-sm">Report and track wildlife sightings, even offline.</p>
-            <p id="datetime" class="text-xs mt-2"></p>
+    <div class="container mx-auto p-4 max-w-2xl">
+
+        <!-- Header -->
+        <header class="bg-green-600 text-white rounded-lg shadow-lg p-6 mb-6 text-center">
+            <h1 class="text-4xl font-bold">Wildlife Watch Guyana</h1>
+            <p class="text-green-200 mt-2">Online and offline wildlife sighting and reporting app.</p>
+            <div id="clock" class="text-sm text-green-100 mt-4 font-mono"></div>
         </header>
 
-        <main id="main-content">
-            <div id="offline-warning" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-md mb-4 hidden" role="alert">
-                <p class="font-bold">Offline Mode</p>
-                <p>You are currently offline. Reports will be saved locally and sent when you're back online.</p>
-            </div>
-            
-            <div id="sync-status" class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-md mb-4 hidden" role="alert">
-                 <p id="sync-message"></p>
-            </div>
+        <!-- Main Content: Reporting Form -->
+        <main class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Report a New Sighting</h2>
 
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Report a Sighting</h2>
-                <form id="sighting-form">
-                    <div class="mb-4">
-                        <label for="photo" class="block text-gray-700 font-medium mb-2">Upload Photo</label>
-                        <input type="file" id="photo" accept="image/*" required class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
-                        <img id="preview" src="" alt="Image preview" class="mt-4 rounded-lg hidden max-h-60 w-auto mx-auto"/>
-                    </div>
-
-                    <div class="mb-4 relative">
-                        <label for="animal-name" class="block text-gray-700 font-medium mb-2">Animal Name (AI Suggestion)</label>
-                         <div class="flex items-start gap-2">
-                            <div class="flex-grow">
-                                <div class="flex items-center">
-                                    <input type="text" id="animal-name" placeholder="Upload a photo to get AI suggestion" class="w-full p-2 border border-gray-300 rounded-lg" required>
-                                    <div id="ai-loader" class="loader ml-2"></div>
-                                </div>
-                                <p id="ai-error" class="text-red-500 text-xs italic mt-1 hidden"></p>
-                            </div>
-                            <button type="button" id="learn-button" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-3 rounded-lg transition-opacity hidden">
-                                ✨ Learn
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label for="latitude" class="block text-gray-700 font-medium mb-2">Latitude</label>
-                            <input type="number" step="any" id="latitude" placeholder="e.g., 6.8049" class="w-full p-2 border border-gray-300 rounded-lg">
-                        </div>
-                        <div>
-                            <label for="longitude" class="block text-gray-700 font-medium mb-2">Longitude</label>
-                            <input type="number" step="any" id="longitude" placeholder="e.g., -58.1553" class="w-full p-2 border border-gray-300 rounded-lg">
-                        </div>
-                    </div>
-                     <p class="text-xs text-gray-500 mb-4 -mt-2">Coordinates are extracted from photos. You can edit them if needed.</p>
-
-                    <div class="mb-6">
-                        <label for="notes" class="block text-gray-700 font-medium mb-2">Notes</label>
-                        <textarea id="notes" rows="4" class="w-full p-2 border border-gray-300 rounded-lg" placeholder="Any additional details about the sighting..."></textarea>
-                    </div>
-
-                    <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition duration-300">Submit Report</button>
-                </form>
-            </div>
-            
-            <div class="bg-white p-6 rounded-lg shadow-md mt-6">
-                <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Pending Reports</h2>
-                <div id="pending-reports-container" class="space-y-4">
-                    <p id="no-pending-reports" class="text-gray-500">No pending reports to sync.</p>
+            <form id="report-form" class="space-y-4">
+                <div>
+                    <label for="photo" class="block text-sm font-medium text-gray-700">Upload Photo</label>
+                    <input type="file" id="photo" accept="image/*" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" required>
+                    <img id="preview" class="mt-4 rounded-lg hidden max-h-60 mx-auto" alt="Image preview">
                 </div>
-            </div>
 
-            <div class="text-center mt-6">
-                <button id="install-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 hidden">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 9.293a1 1 0 011.414 0L10 11.586l2.293-2.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-                      <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v6a1 1 0 11-2 0V4a1 1 0 011-1z" clip-rule="evenodd"></path>
-                    </svg>
-                    Install App for Offline Use
-                </button>
-            </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="latitude" class="block text-sm font-medium text-gray-700">Latitude</label>
+                        <input type="number" step="any" id="latitude" placeholder="e.g., 6.8013" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500">
+                    </div>
+                    <div>
+                        <label for="longitude" class="block text-sm font-medium text-gray-700">Longitude</label>
+                        <input type="number" step="any" id="longitude" placeholder="e.g., -58.1551" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label for="animal-name" class="block text-sm font-medium text-gray-700">Animal Name (or best guess)</label>
+                    <div class="flex items-center space-x-2 mt-1">
+                        <input type="text" id="animal-name" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500" placeholder="e.g., Jaguar">
+                        <button type="button" id="ai-suggest-btn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition disabled:opacity-50" disabled>Get AI Suggestion</button>
+                    </div>
+                </div>
+                 
+                <div id="facts-container" class="hidden">
+                    <button type="button" id="get-facts-btn" class="w-full mt-2 px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition">Learn about this animal!</button>
+                    <div id="animal-facts" class="mt-4 p-4 bg-gray-50 rounded-lg text-sm"></div>
+                </div>
+
+                <div>
+                    <label for="notes" class="block text-sm font-medium text-gray-700">Notes</label>
+                    <textarea id="notes" rows="4" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500" placeholder="Describe the animal's behavior, habitat, or any other details."></textarea>
+                </div>
+
+                <button type="submit" class="w-full py-3 px-4 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition">Save Report</button>
+            </form>
         </main>
-    </div>
-
-    <!-- Gemini Facts Modal -->
-    <div id="facts-modal" class="modal-overlay">
-        <div class="modal-content">
-            <span id="modal-close-button" class="modal-close">&times;</span>
-            <h3 id="modal-title" class="text-2xl font-bold mb-4">About the Animal</h3>
-            <div id="modal-body">
-                <div class="flex justify-center items-center h-32">
-                    <div class="loader" style="display: block; width: 50px; height: 50px;"></div>
-                </div>
+        
+        <!-- Pending Reports Section -->
+        <section id="pending-reports-section" class="mt-6 bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Pending Reports (Offline)</h2>
+            <div id="pending-reports" class="space-y-4">
+                <p class="text-gray-500">No pending reports.</p>
             </div>
+             <button id="sync-button" class="mt-4 w-full py-2 px-4 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition hidden">Sync Now</button>
+        </section>
+
+        <!-- Install App Button -->
+         <div class="mt-6 text-center">
+            <button id="install-button" class="py-3 px-6 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition">
+                Install Wildlife Watch App
+            </button>
         </div>
     </div>
-
+    
     <!-- Toast Notification -->
-    <div id="toast-notification"></div>
+    <div id="toast" class="toast"></div>
 
     <script>
+        // --- PWA Service Worker & Install Logic ---
         let deferredPrompt;
+        const installButton = document.getElementById('install-button');
 
-        function showToast(message) {
-            const toast = document.getElementById('toast-notification');
-            toast.textContent = message;
-            toast.classList.add('show');
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 3000);
-        }
+        window.addEventListener('load', () => {
+            // Hide install button if app is already installed
+            if (window.matchMedia('(display-mode: standalone)').matches) {
+                installButton.style.display = 'none';
+            }
+            // Register the service worker
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('Service worker registered successfully', reg))
+                    .catch(err => console.error('Service worker registration failed:', err));
+            }
+        });
 
         window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent Chrome 67 and earlier from automatically showing the prompt
             e.preventDefault();
+            // Stash the event so it can be triggered later.
             deferredPrompt = e;
-            const installButton = document.getElementById('install-button');
-            installButton.classList.remove('hidden');
-            installButton.addEventListener('click', async () => {
-                installButton.classList.add('hidden');
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                console.log(`User response to the install prompt: ${outcome}`);
-                deferredPrompt = null;
-            });
+            // The button is already visible, so no need to change its display property
+            console.log('`beforeinstallprompt` event was fired.');
         });
-
-        window.addEventListener('appinstalled', () => {
-            document.getElementById('install-button').classList.add('hidden');
-            deferredPrompt = null;
-            console.log('PWA was installed');
-            showToast('App installed successfully!');
-        });
-
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js')
-                    .then(reg => console.log('Service worker registered.', reg))
-                    .catch(err => console.error('Service worker registration failed:', err));
-            });
-        }
         
-        const form = document.getElementById('sighting-form');
+        installButton.addEventListener('click', async () => {
+          if (deferredPrompt) {
+            // Show the install prompt
+            deferredPrompt.prompt();
+            // Wait for the user to respond to the prompt
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`User response to the install prompt: ${outcome}`);
+            // We've used the prompt, and can't use it again, throw it away
+            deferredPrompt = null;
+            // Hide the install button
+            installButton.style.display = 'none';
+          } else {
+            // Fallback for browsers that don't support `beforeinstallprompt` (e.g., Safari on iOS)
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            if (isIOS) {
+                showToast("To install, tap the Share button and then 'Add to Home Screen'.", 'success');
+            } else {
+                showToast("Installation is not supported on this browser or the app is already installed.", 'error');
+            }
+          }
+        });
+
+        // --- App Logic ---
+        const form = document.getElementById('report-form');
         const photoInput = document.getElementById('photo');
         const preview = document.getElementById('preview');
-        const animalNameInput = document.getElementById('animal-name');
         const latitudeInput = document.getElementById('latitude');
         const longitudeInput = document.getElementById('longitude');
+        const animalNameInput = document.getElementById('animal-name');
         const notesInput = document.getElementById('notes');
-        const aiLoader = document.getElementById('ai-loader');
-        const aiError = document.getElementById('ai-error');
-        const offlineWarning = document.getElementById('offline-warning');
-        const syncStatus = document.getElementById('sync-status');
-        const syncMessage = document.getElementById('sync-message');
-        const pendingReportsContainer = document.getElementById('pending-reports-container');
-        const noPendingReports = document.getElementById('no-pending-reports');
-        const dateTimeElement = document.getElementById('datetime');
-        const learnButton = document.getElementById('learn-button');
-        const factsModal = document.getElementById('facts-modal');
-        const modalCloseButton = document.getElementById('modal-close-button');
-        const modalTitle = document.getElementById('modal-title');
-        const modalBody = document.getElementById('modal-body');
-
-        const DB_NAME = 'WildlifeWatchDB';
-        const STORE_NAME = 'sightings';
+        const pendingReportsContainer = document.getElementById('pending-reports');
+        const syncButton = document.getElementById('sync-button');
+        const aiSuggestBtn = document.getElementById('ai-suggest-btn');
+        const getFactsBtn = document.getElementById('get-facts-btn');
+        const factsContainer = document.getElementById('facts-container');
+        const animalFactsDiv = document.getElementById('animal-facts');
+        
         let db;
 
-        function initDB() {
+        // --- IndexedDB for Offline Storage ---
+        function openDB() {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open(DB_NAME, 1);
+                const request = indexedDB.open('wildlifeDB', 1);
+
                 request.onupgradeneeded = event => {
                     const db = event.target.result;
-                    if (!db.objectStoreNames.contains(STORE_NAME)) {
-                        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                    if (!db.objectStoreNames.contains('reports')) {
+                        db.createObjectStore('reports', { keyPath: 'id', autoIncrement: true });
                     }
                 };
+
                 request.onsuccess = event => {
                     db = event.target.result;
-                    console.log('Database initialized.');
                     resolve(db);
                 };
+
                 request.onerror = event => {
-                    console.error('Database error:', event.target.errorCode);
+                    console.error('IndexedDB error:', event.target.errorCode);
                     reject(event.target.errorCode);
                 };
             });
         }
         
-        document.addEventListener('DOMContentLoaded', async () => {
-            function updateTime() {
-                const now = new Date();
-                const options = {
-                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit', timeZone: 'America/Guyana', timeZoneName: 'short'
-                };
-                dateTimeElement.textContent = `Georgetown, Guyana: ${now.toLocaleString('en-US', options)}`;
-            }
-            updateTime();
-            setInterval(updateTime, 60000);
-
-            await initDB();
-            updateOnlineStatus();
-            window.addEventListener('online', updateOnlineStatus);
-            window.addEventListener('offline', updateOnlineStatus);
-            
-            photoInput.addEventListener('change', handlePhotoUpload);
-            form.addEventListener('submit', handleFormSubmit);
-            animalNameInput.addEventListener('input', () => {
-                learnButton.classList.toggle('hidden', !animalNameInput.value.trim());
+        function saveReport(report) {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['reports'], 'readwrite');
+                const store = transaction.objectStore('reports');
+                const request = store.add(report);
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject('Could not save report: ' + event.target.error);
             });
-            learnButton.addEventListener('click', getAnimalFacts);
-            modalCloseButton.addEventListener('click', () => factsModal.classList.remove('visible'));
-            factsModal.addEventListener('click', (e) => {
-                if(e.target === factsModal) factsModal.classList.remove('visible');
-            });
-            
-            displayPendingReports();
-            checkAndSync();
-        });
-        
-        function updateOnlineStatus() {
-            if (navigator.onLine) {
-                offlineWarning.classList.add('hidden');
-                document.body.classList.remove('grayscale');
-                checkAndSync();
-            } else {
-                offlineWarning.classList.remove('hidden');
-                document.body.classList.add('grayscale');
-            }
         }
 
-        function handlePhotoUpload(event) {
+        function getPendingReports() {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['reports'], 'readonly');
+                const store = transaction.objectStore('reports');
+                const request = store.getAll();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject('Could not get reports: ' + event.target.error);
+            });
+        }
+
+        function deleteReport(id) {
+             return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['reports'], 'readwrite');
+                const store = transaction.objectStore('reports');
+                const request = store.delete(id);
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject('Could not delete report: ' + event.target.error);
+            });
+        }
+
+
+        // --- Image & Geotag Handling ---
+        photoInput.addEventListener('change', handleImageUpload);
+
+        function handleImageUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
 
+            // Display image preview
             const reader = new FileReader();
             reader.onload = e => {
                 preview.src = e.target.result;
                 preview.classList.remove('hidden');
+                aiSuggestBtn.disabled = false;
             };
             reader.readAsDataURL(file);
             
+            // Reset fields
             latitudeInput.value = '';
             longitudeInput.value = '';
-            animalNameInput.value = '';
-            aiError.classList.add('hidden');
-            learnButton.classList.add('hidden');
 
-            extractGpsData(file);
-            getAiAnimalSuggestion(file);
-        }
-
-        function extractGpsData(file) {
+            // Extract EXIF data
             EXIF.getData(file, function() {
                 const lat = EXIF.getTag(this, "GPSLatitude");
                 const lon = EXIF.getTag(this, "GPSLongitude");
-                const latRef = EXIF.getTag(this, "GPSLatitudeRef");
-                const lonRef = EXIF.getTag(this, "GPSLongitudeRef");
-                if (lat && lon && latRef && lonRef) {
-                    const latDec = convertDMSToDD(lat[0].numerator, lat[1].numerator, lat[2].numerator / lat[2].denominator, latRef);
-                    const lonDec = convertDMSToDD(lon[0].numerator, lon[1].numerator, lon[2].numerator / lon[2].denominator, lonRef);
-                    latitudeInput.value = latDec.toFixed(6);
-                    longitudeInput.value = lonDec.toFixed(6);
+
+                if (lat && lon) {
+                    const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
+                    const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "W";
+
+                    const latitude = convertDMSToDD(lat[0], lat[1], lat[2], latRef);
+                    const longitude = convertDMSToDD(lon[0], lon[1], lon[2], lonRef);
+                    
+                    latitudeInput.value = latitude.toFixed(6);
+                    longitudeInput.value = longitude.toFixed(6);
+                    showToast('GPS coordinates extracted from photo!', 'success');
                 } else {
-                    console.log("No GPS data found in image.");
+                    showToast('No GPS data found in photo. Please enter manually.', 'error');
                 }
             });
         }
         
         function convertDMSToDD(degrees, minutes, seconds, direction) {
             let dd = degrees + minutes / 60 + seconds / 3600;
-            if (direction == "S" || direction == "W") {
+            if (direction === "S" || direction === "W") {
                 dd = dd * -1;
             }
             return dd;
         }
 
-        async function getAiAnimalSuggestion(file) {
-            if (!navigator.onLine) {
-                animalNameInput.placeholder = "AI identification requires internet.";
+        // --- Form Submission ---
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const photoFile = photoInput.files[0];
+            if (!photoFile) {
+                showToast('Please upload a photo.', 'error');
                 return;
             }
             
-            aiLoader.style.display = 'block';
-            aiError.classList.add('hidden');
-            animalNameInput.value = '';
-            animalNameInput.placeholder = "AI is identifying the animal...";
-
             const reader = new FileReader();
             reader.onloadend = async () => {
-                const base64ImageData = reader.result.split(',')[1];
-                const apiKey = "";
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-                const payload = {
-                    contents: [{
-                        parts: [
-                            { text: "Identify the animal in this image. Focus on species found in Guyana. Provide only the common name. If it's not an animal, say 'Not an animal'." },
-                            { inlineData: { mimeType: "image/jpeg", data: base64ImageData } }
-                        ]
-                    }]
+                const report = {
+                    photo: reader.result, // base64 string
+                    latitude: latitudeInput.value,
+                    longitude: longitudeInput.value,
+                    animalName: animalNameInput.value,
+                    notes: notesInput.value,
+                    timestamp: new Date().toISOString()
                 };
 
-                 try {
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-                    const result = await response.json();
-                    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (text) {
-                        animalNameInput.value = text.trim();
-                        learnButton.classList.remove('hidden');
-                    } else {
-                       throw new Error("Could not identify animal from response.");
-                    }
-                } catch (error) {
-                    console.error("Gemini API error:", error);
-                    aiError.textContent = "AI identification failed. Please enter manually.";
-                    aiError.classList.remove('hidden');
-                    animalNameInput.placeholder = "Couldn't get AI suggestion";
-                } finally {
-                    aiLoader.style.display = 'none';
+                try {
+                    await saveReport(report);
+                    showToast('Report saved locally!', 'success');
+                    form.reset();
+                    preview.classList.add('hidden');
+                    aiSuggestBtn.disabled = true;
+                    factsContainer.classList.add('hidden');
+                    animalFactsDiv.innerHTML = '';
+                    loadPendingReports();
+                } catch (err) {
+                    showToast('Failed to save report.', 'error');
+                    console.error(err);
                 }
             };
-            reader.readAsDataURL(file);
-        }
+            reader.readAsDataURL(photoFile);
+        });
 
-        async function getAnimalFacts() {
-            const animalName = animalNameInput.value.trim();
-            if (!animalName || !navigator.onLine) {
-                showToast("Please provide an animal name and ensure you are online.");
+        // --- Display & Sync Reports ---
+        async function loadPendingReports() {
+            try {
+                const reports = await getPendingReports();
+                pendingReportsContainer.innerHTML = '';
+                if (reports.length === 0) {
+                    pendingReportsContainer.innerHTML = '<p class="text-gray-500">No pending reports.</p>';
+                    syncButton.classList.add('hidden');
+                } else {
+                    syncButton.classList.remove('hidden');
+                    reports.forEach(report => {
+                        const reportEl = document.createElement('div');
+                        reportEl.className = 'p-4 border rounded-lg bg-gray-50';
+                        reportEl.innerHTML = `
+                            <div class="flex items-start space-x-4">
+                                <img src="${report.photo}" class="w-20 h-20 object-cover rounded-md">
+                                <div class="flex-1">
+                                    <p class="font-bold">${report.animalName || 'Unnamed Sighting'}</p>
+                                    <p class="text-sm text-gray-600">Coords: ${report.latitude}, ${report.longitude}</p>
+                                    <p class="text-xs text-gray-400">Saved: ${new Date(report.timestamp).toLocaleString()}</p>
+                                </div>
+                            </div>
+                        `;
+                        pendingReportsContainer.appendChild(reportEl);
+                    });
+                }
+            } catch(err) {
+                 console.error('Failed to load reports:', err);
+            }
+        }
+        
+        syncButton.addEventListener('click', syncReports);
+
+        async function syncReports() {
+            if (!navigator.onLine) {
+                showToast('You are offline. Cannot sync.', 'error');
                 return;
             }
 
-            factsModal.classList.add('visible');
-            modalTitle.textContent = `About the ${animalName}`;
-            modalBody.innerHTML = `<div class="flex justify-center items-center h-32"><div class="loader" style="display: block; width: 50px; height: 50px;"></div></div>`;
+            const reports = await getPendingReports();
+            if (reports.length === 0) {
+                showToast('No reports to sync.', 'success');
+                return;
+            }
+            
+            showToast(`Syncing ${reports.length} reports...`, 'success');
+            
+            // This is a simulation. In a real app, you would send data to a server.
+            // For this version, we will create a mailto link.
+            let emailBody = reports.map(report => {
+                return `
+Sighting: ${report.animalName || 'Unknown'}
+Coordinates: ${report.latitude}, ${report.longitude}
+Notes: ${report.notes}
+Timestamp: ${new Date(report.timestamp).toLocaleString()}
+(Image data is not included in this email)
+--------------------------------------
+                `;
+            }).join('');
 
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const mailtoLink = `mailto:wildlifewatchgy@gmail.com?subject=Wildlife Sightings Sync&body=${encodeURIComponent(emailBody)}`;
+            
+            // Open mail client
+            window.location.href = mailtoLink;
+
+            // After attempting to send, clear the local reports
+            // In a real app, you'd only clear on a successful server response
+            setTimeout(async () => {
+                for(const report of reports) {
+                   await deleteReport(report.id);
+                }
+                showToast('Sync complete! Local reports cleared.', 'success');
+                loadPendingReports();
+            }, 2000);
+        }
+        
+        // --- Gemini API Calls ---
+        // IMPORTANT: You MUST get your own API key from Google AI Studio.
+        const GEMINI_API_KEY = ""; // PASTE YOUR GEMINI API KEY HERE
+        
+        async function geminiApiCall(payload, model = 'gemini-2.5-flash-preview-05-20') {
+             if (!GEMINI_API_KEY) {
+                showToast("Gemini API key is not set. Please add it to the script.", "error");
+                throw new Error("API key not set.");
+            }
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                 throw new Error(`API call failed with status ${response.status}`);
+            }
+            return response.json();
+        }
+
+        aiSuggestBtn.addEventListener('click', async () => {
+            const photoFile = photoInput.files[0];
+            if (!photoFile) {
+                showToast('Please upload a photo first.', 'error');
+                return;
+            }
+            
+            aiSuggestBtn.textContent = 'Analyzing...';
+            aiSuggestBtn.disabled = true;
+
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64Data = reader.result.split(',')[1];
+                const payload = {
+                    contents: [{
+                        parts: [
+                            { text: "Identify the animal in this photo. Provide only the common name." },
+                            { inlineData: { mimeType: photoFile.type, data: base64Data } }
+                        ]
+                    }]
+                };
+                
+                try {
+                    const result = await geminiApiCall(payload);
+                    const animalName = result.candidates[0].content.parts[0].text.trim();
+                    animalNameInput.value = animalName;
+                    factsContainer.classList.remove('hidden');
+                    showToast('AI suggestion received!', 'success');
+                } catch (error) {
+                    console.error('Gemini API error:', error);
+                    showToast('Could not get AI suggestion.', 'error');
+                } finally {
+                    aiSuggestBtn.textContent = 'Get AI Suggestion';
+                    aiSuggestBtn.disabled = false;
+                }
+            };
+            reader.readAsDataURL(photoFile);
+        });
+
+        getFactsBtn.addEventListener('click', async () => {
+            const animalName = animalNameInput.value;
+            if (!animalName) {
+                showToast('No animal name to get facts for.', 'error');
+                return;
+            }
+
+            getFactsBtn.textContent = 'Fetching Facts...';
+            getFactsBtn.disabled = true;
+            animalFactsDiv.innerHTML = '<p>Loading...</p>';
+
             const payload = {
                 contents: [{
-                    parts: [{ text: `Provide a brief, interesting paragraph about the ${animalName}, focusing on its characteristics, habitat, and conservation status specifically in Guyana. Keep it concise, engaging, and easy to read for a general audience.` }]
+                    parts: [{ text: `Provide a short, interesting paragraph about the ${animalName}, focusing on its presence or significance in Guyana.` }]
                 }]
             };
 
             try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-                const result = await response.json();
-                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (text) {
-                    modalBody.innerHTML = `<p class="text-gray-700">${text.replace(/\n/g, '<br>')}</p>`;
-                } else {
-                    throw new Error("Could not retrieve facts.");
-                }
+                const result = await geminiApiCall(payload);
+                const facts = result.candidates[0].content.parts[0].text;
+                animalFactsDiv.innerHTML = `<p>${facts}</p>`;
             } catch (error) {
-                console.error("Gemini Facts API error:", error);
-                modalBody.innerHTML = `<p class="text-red-500">Sorry, we couldn't fetch information about the ${animalName} at this time.</p>`;
+                console.error('Gemini API error:', error);
+                animalFactsDiv.innerHTML = '<p class="text-red-500">Could not fetch facts at this time.</p>';
+            } finally {
+                getFactsBtn.textContent = 'Learn about this animal!';
+                getFactsBtn.disabled = false;
             }
-        }
+        });
 
-
-        async function handleFormSubmit(event) {
-            event.preventDefault();
-            const photoFile = photoInput.files[0];
-            if (!photoFile) {
-                showToast("Please select a photo.");
-                return;
-            }
-            const report = {
-                photo: photoFile,
-                animalName: animalNameInput.value,
-                latitude: latitudeInput.value,
-                longitude: longitudeInput.value,
-                notes: notesInput.value,
-                timestamp: new Date().toISOString()
-            };
-            await saveReportToDB(report);
-            form.reset();
-            preview.classList.add('hidden');
-            preview.src = '';
-            learnButton.classList.add('hidden');
-            showToast('Report saved locally! It will sync when online.');
-            displayPendingReports();
-            checkAndSync();
-        }
-
-        function saveReportToDB(report) {
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction([STORE_NAME], 'readwrite');
-                const store = transaction.objectStore(STORE_NAME);
-                const request = store.add(report);
-                request.onsuccess = () => resolve();
-                request.onerror = (event) => reject(event.target.error);
-            });
-        }
-
-        async function displayPendingReports() {
-            const reports = await getPendingReportsFromDB();
-            pendingReportsContainer.innerHTML = '';
-            if (reports.length === 0) {
-                 pendingReportsContainer.appendChild(noPendingReports);
-                 noPendingReports.classList.remove('hidden');
-            } else {
-                noPendingReports.classList.add('hidden');
-                reports.forEach(report => {
-                    const reportDiv = document.createElement('div');
-                    reportDiv.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-lg border';
-                    const img = document.createElement('img');
-                    img.src = URL.createObjectURL(report.photo);
-                    img.className = 'w-12 h-12 object-cover rounded-md mr-4';
-                    const textDiv = document.createElement('div');
-                    textDiv.className = 'flex-grow';
-                    const title = document.createElement('p');
-                    title.textContent = report.animalName;
-                    title.className = 'font-semibold';
-                    const time = document.createElement('p');
-                    time.textContent = new Date(report.timestamp).toLocaleString();
-                    time.className = 'text-xs text-gray-500';
-                    textDiv.appendChild(title);
-                    textDiv.appendChild(time);
-                    const statusSpan = document.createElement('span');
-                    statusSpan.textContent = 'Pending';
-                    statusSpan.className = 'text-xs bg-yellow-200 text-yellow-800 px-2 py-1 rounded-full';
-                    reportDiv.appendChild(img);
-                    reportDiv.appendChild(textDiv);
-                    reportDiv.appendChild(statusSpan);
-                    pendingReportsContainer.appendChild(reportDiv);
-                });
-            }
+        // --- Utilities ---
+        function showToast(message, type = '') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast show ${type}`; // Add type class for color
+            setTimeout(() => {
+                toast.className = toast.className.replace('show', '');
+            }, 3000);
         }
         
-        function getPendingReportsFromDB() {
-            return new Promise((resolve) => {
-                 const transaction = db.transaction([STORE_NAME], 'readonly');
-                 const store = transaction.objectStore(STORE_NAME);
-                 const request = store.getAll();
-                 request.onsuccess = (event) => resolve(event.target.result);
-            });
+        // Live Clock
+        function updateClock() {
+            const clockEl = document.getElementById('clock');
+            // Options for Guyana time
+            const options = { timeZone: 'America/Guyana', hour12: true, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' };
+            clockEl.textContent = new Date().toLocaleString('en-US', options);
         }
-        
-        async function checkAndSync() {
-            if (!navigator.onLine) {
-                console.log("Offline, skipping sync.");
-                return;
-            }
-            const reports = await getPendingReportsFromDB();
-            if(reports.length === 0) {
-                console.log("No reports to sync.");
-                syncStatus.classList.add('hidden');
-                return;
-            }
+
+        // --- Initial Load ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            await openDB();
+            loadPendingReports();
+            updateClock();
+            setInterval(updateClock, 1000);
             
-            syncMessage.textContent = `Syncing ${reports.length} report(s)...`;
-            syncStatus.classList.remove('hidden');
-            
-            // This is a simulation. In a real app, you would POST data to a server.
-            // The mailto link is a fallback but not robust for offline syncing.
-            // We will just clear the queue to simulate a successful sync.
-            for (const report of reports) {
-                console.log("Syncing report:", report.id);
-                // In a real app: await fetch('/api/submit-report', { method: 'POST', body: ... });
-                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network request
-                await deleteReportFromDB(report.id);
-            }
-            
-            syncMessage.textContent = 'All reports have been synced!';
-            showToast(`${reports.length} report(s) synced successfully!`);
-            setTimeout(() => syncStatus.classList.add('hidden'), 3000);
-            displayPendingReports();
-        }
-        
-        function deleteReportFromDB(id) {
-            return new Promise((resolve) => {
-                const transaction = db.transaction([STORE_NAME], 'readwrite');
-                const store = transaction.objectStore(STORE_NAME);
-                const request = store.delete(id);
-                request.onsuccess = () => resolve();
-            });
-        }
+            // Check online status for sync button
+             window.addEventListener('online', () => syncButton.classList.remove('hidden'));
+             window.addEventListener('offline', () => syncButton.classList.add('hidden'));
+        });
     </script>
 </body>
 </html>
+
+
 
