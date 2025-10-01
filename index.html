@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -26,7 +26,7 @@
             border-radius: 8px;
             padding: 16px;
             position: fixed;
-            z-index: 1;
+            z-index: 100;
             left: 50%;
             bottom: 30px;
             opacity: 0;
@@ -95,7 +95,7 @@
                     <textarea id="notes" rows="4" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500" placeholder="Describe the animal's behavior, habitat, or any other details."></textarea>
                 </div>
 
-                <button type="submit" class="w-full py-3 px-4 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition">Save Report</button>
+                <button type="submit" class="w-full py-3 px-4 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition">Send Report</button>
             </form>
         </main>
         
@@ -119,6 +119,30 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
+    <!-- Guidance FAB -->
+    <button id="guidance-fab" class="fixed bottom-6 right-6 bg-teal-500 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-3xl font-bold hover:bg-teal-600 transition z-20">?</button>
+
+    <!-- Guidance Modal -->
+    <div id="guidance-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-30">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-2xl font-semibold">Ask a Wildlife Expert</h3>
+                <button id="close-modal-btn" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label for="guidance-query" class="block text-sm font-medium text-gray-700">Your Question:</label>
+                    <textarea id="guidance-query" rows="3" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500" placeholder="e.g., What should I do if I see a snake?"></textarea>
+                </div>
+                <button id="ask-gemini-btn" class="w-full py-2 px-4 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Ask Gemini</button>
+                <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+                    <h4 class="font-semibold mb-2">Guidance:</h4>
+                    <div id="guidance-response" class="text-sm space-y-2 prose"><p class="text-gray-500">Ask a question to get guidance from our AI assistant.</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- PWA Service Worker & Install Logic ---
         let deferredPrompt;
@@ -138,27 +162,19 @@
         });
 
         window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent Chrome 67 and earlier from automatically showing the prompt
             e.preventDefault();
-            // Stash the event so it can be triggered later.
             deferredPrompt = e;
-            // The button is already visible, so no need to change its display property
             console.log('`beforeinstallprompt` event was fired.');
         });
         
         installButton.addEventListener('click', async () => {
           if (deferredPrompt) {
-            // Show the install prompt
             deferredPrompt.prompt();
-            // Wait for the user to respond to the prompt
             const { outcome } = await deferredPrompt.userChoice;
             console.log(`User response to the install prompt: ${outcome}`);
-            // We've used the prompt, and can't use it again, throw it away
             deferredPrompt = null;
-            // Hide the install button
             installButton.style.display = 'none';
           } else {
-            // Fallback for browsers that don't support `beforeinstallprompt` (e.g., Safari on iOS)
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
             if (isIOS) {
                 showToast("To install, tap the Share button and then 'Add to Home Screen'.", 'success');
@@ -182,6 +198,12 @@
         const getFactsBtn = document.getElementById('get-facts-btn');
         const factsContainer = document.getElementById('facts-container');
         const animalFactsDiv = document.getElementById('animal-facts');
+        const guidanceFab = document.getElementById('guidance-fab');
+        const guidanceModal = document.getElementById('guidance-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const askGeminiBtn = document.getElementById('ask-gemini-btn');
+        const guidanceQueryInput = document.getElementById('guidance-query');
+        const guidanceResponseDiv = document.getElementById('guidance-response');
         
         let db;
 
@@ -189,23 +211,14 @@
         function openDB() {
             return new Promise((resolve, reject) => {
                 const request = indexedDB.open('wildlifeDB', 1);
-
                 request.onupgradeneeded = event => {
                     const db = event.target.result;
                     if (!db.objectStoreNames.contains('reports')) {
                         db.createObjectStore('reports', { keyPath: 'id', autoIncrement: true });
                     }
                 };
-
-                request.onsuccess = event => {
-                    db = event.target.result;
-                    resolve(db);
-                };
-
-                request.onerror = event => {
-                    console.error('IndexedDB error:', event.target.errorCode);
-                    reject(event.target.errorCode);
-                };
+                request.onsuccess = event => { db = event.target.result; resolve(db); };
+                request.onerror = event => { console.error('IndexedDB error:', event.target.errorCode); reject(event.target.errorCode); };
             });
         }
         
@@ -246,8 +259,6 @@
         function handleImageUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
-
-            // Display image preview
             const reader = new FileReader();
             reader.onload = e => {
                 preview.src = e.target.result;
@@ -255,23 +266,16 @@
                 aiSuggestBtn.disabled = false;
             };
             reader.readAsDataURL(file);
-            
-            // Reset fields
             latitudeInput.value = '';
             longitudeInput.value = '';
-
-            // Extract EXIF data
             EXIF.getData(file, function() {
                 const lat = EXIF.getTag(this, "GPSLatitude");
                 const lon = EXIF.getTag(this, "GPSLongitude");
-
                 if (lat && lon) {
                     const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
                     const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "W";
-
                     const latitude = convertDMSToDD(lat[0], lat[1], lat[2], latRef);
                     const longitude = convertDMSToDD(lon[0], lon[1], lon[2], lonRef);
-                    
                     latitudeInput.value = latitude.toFixed(6);
                     longitudeInput.value = longitude.toFixed(6);
                     showToast('GPS coordinates extracted from photo!', 'success');
@@ -283,9 +287,7 @@
         
         function convertDMSToDD(degrees, minutes, seconds, direction) {
             let dd = degrees + minutes / 60 + seconds / 3600;
-            if (direction === "S" || direction === "W") {
-                dd = dd * -1;
-            }
+            if (direction === "S" || direction === "W") { dd = dd * -1; }
             return dd;
         }
 
@@ -297,33 +299,52 @@
                 showToast('Please upload a photo.', 'error');
                 return;
             }
-            
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-                const report = {
-                    photo: reader.result, // base64 string
-                    latitude: latitudeInput.value,
-                    longitude: longitudeInput.value,
-                    animalName: animalNameInput.value,
-                    notes: notesInput.value,
-                    timestamp: new Date().toISOString()
-                };
-
-                try {
-                    await saveReport(report);
-                    showToast('Report saved locally!', 'success');
-                    form.reset();
-                    preview.classList.add('hidden');
-                    aiSuggestBtn.disabled = true;
-                    factsContainer.classList.add('hidden');
-                    animalFactsDiv.innerHTML = '';
-                    loadPendingReports();
-                } catch (err) {
-                    showToast('Failed to save report.', 'error');
-                    console.error(err);
-                }
+            const reportData = {
+                latitude: latitudeInput.value,
+                longitude: longitudeInput.value,
+                animalName: animalNameInput.value,
+                notes: notesInput.value,
+                timestamp: new Date().toISOString()
             };
-            reader.readAsDataURL(photoFile);
+
+            if (navigator.onLine) {
+                showToast('Preparing email...', 'success');
+                let emailBody = `
+Sighting: ${reportData.animalName || 'Unknown'}
+Coordinates: ${reportData.latitude}, ${reportData.longitude}
+Notes: ${reportData.notes}
+Timestamp: ${new Date(reportData.timestamp).toLocaleString()}
+
+IMPORTANT: Please attach the photo of the sighting to this email manually.
+--------------------------------------
+                `;
+                const mailtoLink = `mailto:wildlifewatchgy@gmail.com?subject=New Wildlife Sighting: ${reportData.animalName || 'Unknown'}&body=${encodeURIComponent(emailBody)}`;
+                window.location.href = mailtoLink;
+                form.reset();
+                preview.classList.add('hidden');
+                aiSuggestBtn.disabled = true;
+                factsContainer.classList.add('hidden');
+                animalFactsDiv.innerHTML = '';
+            } else {
+                showToast('You are offline. Saving report to send later.', 'success');
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    const report = { ...reportData, photo: reader.result };
+                    try {
+                        await saveReport(report);
+                        form.reset();
+                        preview.classList.add('hidden');
+                        aiSuggestBtn.disabled = true;
+                        factsContainer.classList.add('hidden');
+                        animalFactsDiv.innerHTML = '';
+                        loadPendingReports();
+                    } catch (err) {
+                        showToast('Failed to save report locally.', 'error');
+                        console.error(err);
+                    }
+                };
+                reader.readAsDataURL(photoFile);
+            }
         });
 
         // --- Display & Sync Reports ---
@@ -360,50 +381,28 @@
         syncButton.addEventListener('click', syncReports);
 
         async function syncReports() {
-            if (!navigator.onLine) {
-                showToast('You are offline. Cannot sync.', 'error');
-                return;
-            }
-
+            if (!navigator.onLine) { showToast('You are offline. Cannot sync.', 'error'); return; }
             const reports = await getPendingReports();
-            if (reports.length === 0) {
-                showToast('No reports to sync.', 'success');
-                return;
-            }
-            
+            if (reports.length === 0) { showToast('No reports to sync.', 'success'); return; }
             showToast(`Syncing ${reports.length} reports...`, 'success');
-            
-            // This is a simulation. In a real app, you would send data to a server.
-            // For this version, we will create a mailto link.
-            let emailBody = reports.map(report => {
-                return `
+            let emailBody = reports.map(report => `
 Sighting: ${report.animalName || 'Unknown'}
 Coordinates: ${report.latitude}, ${report.longitude}
 Notes: ${report.notes}
 Timestamp: ${new Date(report.timestamp).toLocaleString()}
 (Image data is not included in this email)
 --------------------------------------
-                `;
-            }).join('');
-
+            `).join('');
             const mailtoLink = `mailto:wildlifewatchgy@gmail.com?subject=Wildlife Sightings Sync&body=${encodeURIComponent(emailBody)}`;
-            
-            // Open mail client
             window.location.href = mailtoLink;
-
-            // After attempting to send, clear the local reports
-            // In a real app, you'd only clear on a successful server response
             setTimeout(async () => {
-                for(const report of reports) {
-                   await deleteReport(report.id);
-                }
+                for(const report of reports) { await deleteReport(report.id); }
                 showToast('Sync complete! Local reports cleared.', 'success');
                 loadPendingReports();
             }, 2000);
         }
         
         // --- Gemini API Calls ---
-        // IMPORTANT: You MUST get your own API key from Google AI Studio.
         const GEMINI_API_KEY = ""; // PASTE YOUR GEMINI API KEY HERE
         
         async function geminiApiCall(payload, model = 'gemini-2.5-flash-preview-05-20') {
@@ -417,34 +416,19 @@ Timestamp: ${new Date(report.timestamp).toLocaleString()}
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            if (!response.ok) {
-                 throw new Error(`API call failed with status ${response.status}`);
-            }
+            if (!response.ok) { throw new Error(`API call failed with status ${response.status}`); }
             return response.json();
         }
 
         aiSuggestBtn.addEventListener('click', async () => {
             const photoFile = photoInput.files[0];
-            if (!photoFile) {
-                showToast('Please upload a photo first.', 'error');
-                return;
-            }
-            
+            if (!photoFile) { showToast('Please upload a photo first.', 'error'); return; }
             aiSuggestBtn.textContent = 'Analyzing...';
             aiSuggestBtn.disabled = true;
-
             const reader = new FileReader();
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
-                const payload = {
-                    contents: [{
-                        parts: [
-                            { text: "Identify the animal in this photo. Provide only the common name." },
-                            { inlineData: { mimeType: photoFile.type, data: base64Data } }
-                        ]
-                    }]
-                };
-                
+                const payload = { contents: [{ parts: [ { text: "Identify the animal in this photo. Provide only the common name." }, { inlineData: { mimeType: photoFile.type, data: base64Data } } ] }] };
                 try {
                     const result = await geminiApiCall(payload);
                     const animalName = result.candidates[0].content.parts[0].text.trim();
@@ -464,21 +448,11 @@ Timestamp: ${new Date(report.timestamp).toLocaleString()}
 
         getFactsBtn.addEventListener('click', async () => {
             const animalName = animalNameInput.value;
-            if (!animalName) {
-                showToast('No animal name to get facts for.', 'error');
-                return;
-            }
-
+            if (!animalName) { showToast('No animal name to get facts for.', 'error'); return; }
             getFactsBtn.textContent = 'Fetching Facts...';
             getFactsBtn.disabled = true;
             animalFactsDiv.innerHTML = '<p>Loading...</p>';
-
-            const payload = {
-                contents: [{
-                    parts: [{ text: `Provide a short, interesting paragraph about the ${animalName}, focusing on its presence or significance in Guyana.` }]
-                }]
-            };
-
+            const payload = { contents: [{ parts: [{ text: `Provide a short, interesting paragraph about the ${animalName}, focusing on its presence or significance in Guyana.` }] }] };
             try {
                 const result = await geminiApiCall(payload);
                 const facts = result.candidates[0].content.parts[0].text;
@@ -491,21 +465,47 @@ Timestamp: ${new Date(report.timestamp).toLocaleString()}
                 getFactsBtn.disabled = false;
             }
         });
+        
+        // --- Guidance Feature ---
+        guidanceFab.addEventListener('click', () => guidanceModal.classList.remove('hidden'));
+        closeModalBtn.addEventListener('click', () => guidanceModal.classList.add('hidden'));
+        guidanceModal.addEventListener('click', (e) => { if (e.target === guidanceModal) { guidanceModal.classList.add('hidden'); } });
+        askGeminiBtn.addEventListener('click', handleGuidanceQuery);
+
+        async function handleGuidanceQuery() {
+            const query = guidanceQueryInput.value;
+            if (!query) { showToast('Please enter a question.', 'error'); return; }
+            askGeminiBtn.textContent = 'Thinking...';
+            askGeminiBtn.disabled = true;
+            guidanceResponseDiv.innerHTML = '<p>Loading...</p>';
+            const payload = {
+                contents: [{ parts: [{ text: query }] }],
+                systemInstruction: { parts: [{ text: "You are a helpful wildlife expert and guide for Guyana. Answer the user's questions concisely and accurately, focusing on local species, conservation efforts, and safe wildlife interaction practices in Guyana. Format your response using simple HTML for readability, like paragraphs <p> and lists <ul><li>." }] }
+            };
+            try {
+                const result = await geminiApiCall(payload);
+                const guidance = result.candidates[0].content.parts[0].text;
+                guidanceResponseDiv.innerHTML = guidance;
+            } catch (error) {
+                console.error('Gemini guidance error:', error);
+                guidanceResponseDiv.innerHTML = '<p class="text-red-500">Sorry, I could not get guidance at this time.</p>';
+            } finally {
+                askGeminiBtn.textContent = 'Ask Gemini';
+                askGeminiBtn.disabled = false;
+            }
+        }
+
 
         // --- Utilities ---
         function showToast(message, type = '') {
             const toast = document.getElementById('toast');
             toast.textContent = message;
-            toast.className = `toast show ${type}`; // Add type class for color
-            setTimeout(() => {
-                toast.className = toast.className.replace('show', '');
-            }, 3000);
+            toast.className = `toast show ${type}`;
+            setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
         }
         
-        // Live Clock
         function updateClock() {
             const clockEl = document.getElementById('clock');
-            // Options for Guyana time
             const options = { timeZone: 'America/Guyana', hour12: true, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' };
             clockEl.textContent = new Date().toLocaleString('en-US', options);
         }
@@ -516,14 +516,9 @@ Timestamp: ${new Date(report.timestamp).toLocaleString()}
             loadPendingReports();
             updateClock();
             setInterval(updateClock, 1000);
-            
-            // Check online status for sync button
-             window.addEventListener('online', () => syncButton.classList.remove('hidden'));
-             window.addEventListener('offline', () => syncButton.classList.add('hidden'));
+            window.addEventListener('online', () => syncButton.classList.remove('hidden'));
+            window.addEventListener('offline', () => syncButton.classList.add('hidden'));
         });
     </script>
 </body>
 </html>
-
-
-
