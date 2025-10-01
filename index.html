@@ -51,7 +51,7 @@
         <!-- Header -->
         <header class="bg-green-600 text-white rounded-lg shadow-lg p-6 mb-6 text-center">
             <h1 class="text-4xl font-bold">Wildlife Watch Guyana</h1>
-            <p class="text-green-200 mt-2">Online and offline wildlife sighting and reporting app.</p>
+            <p class="text-green-200 mt-2">Online wildlife sighting and reporting app.</p>
             <div id="clock" class="text-sm text-green-100 mt-4 font-mono"></div>
         </header>
 
@@ -99,15 +99,6 @@
             </form>
         </main>
         
-        <!-- Pending Reports Section -->
-        <section id="pending-reports-section" class="mt-6 bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Pending Reports (Offline)</h2>
-            <div id="pending-reports" class="space-y-4">
-                <p class="text-gray-500">No pending reports.</p>
-            </div>
-             <button id="sync-button" class="mt-4 w-full py-2 px-4 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition hidden">Sync Now</button>
-        </section>
-
         <!-- Install App Button -->
          <div class="mt-6 text-center">
             <button id="install-button" class="py-3 px-6 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition">
@@ -192,8 +183,6 @@
         const longitudeInput = document.getElementById('longitude');
         const animalNameInput = document.getElementById('animal-name');
         const notesInput = document.getElementById('notes');
-        const pendingReportsContainer = document.getElementById('pending-reports');
-        const syncButton = document.getElementById('sync-button');
         const aiSuggestBtn = document.getElementById('ai-suggest-btn');
         const getFactsBtn = document.getElementById('get-facts-btn');
         const factsContainer = document.getElementById('facts-container');
@@ -205,54 +194,6 @@
         const guidanceQueryInput = document.getElementById('guidance-query');
         const guidanceResponseDiv = document.getElementById('guidance-response');
         
-        let db;
-
-        // --- IndexedDB for Offline Storage ---
-        function openDB() {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open('wildlifeDB', 1);
-                request.onupgradeneeded = event => {
-                    const db = event.target.result;
-                    if (!db.objectStoreNames.contains('reports')) {
-                        db.createObjectStore('reports', { keyPath: 'id', autoIncrement: true });
-                    }
-                };
-                request.onsuccess = event => { db = event.target.result; resolve(db); };
-                request.onerror = event => { console.error('IndexedDB error:', event.target.errorCode); reject(event.target.errorCode); };
-            });
-        }
-        
-        function saveReport(report) {
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(['reports'], 'readwrite');
-                const store = transaction.objectStore('reports');
-                const request = store.add(report);
-                request.onsuccess = () => resolve();
-                request.onerror = (event) => reject('Could not save report: ' + event.target.error);
-            });
-        }
-
-        function getPendingReports() {
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(['reports'], 'readonly');
-                const store = transaction.objectStore('reports');
-                const request = store.getAll();
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = (event) => reject('Could not get reports: ' + event.target.error);
-            });
-        }
-
-        function deleteReport(id) {
-             return new Promise((resolve, reject) => {
-                const transaction = db.transaction(['reports'], 'readwrite');
-                const store = transaction.objectStore('reports');
-                const request = store.delete(id);
-                request.onsuccess = () => resolve();
-                request.onerror = (event) => reject('Could not delete report: ' + event.target.error);
-            });
-        }
-
-
         // --- Image & Geotag Handling ---
         photoInput.addEventListener('change', handleImageUpload);
 
@@ -264,6 +205,8 @@
                 preview.src = e.target.result;
                 preview.classList.remove('hidden');
                 aiSuggestBtn.disabled = false;
+                // Automatically get suggestion if online
+                triggerAiSuggestion();
             };
             reader.readAsDataURL(file);
             latitudeInput.value = '';
@@ -299,6 +242,12 @@
                 showToast('Please upload a photo.', 'error');
                 return;
             }
+
+            if (!navigator.onLine) {
+                showToast('You are offline. Please connect to the internet to send a report.', 'error');
+                return;
+            }
+            
             const reportData = {
                 latitude: latitudeInput.value,
                 longitude: longitudeInput.value,
@@ -307,9 +256,8 @@
                 timestamp: new Date().toISOString()
             };
 
-            if (navigator.onLine) {
-                showToast('Preparing email...', 'success');
-                let emailBody = `
+            showToast('Preparing email...', 'success');
+            let emailBody = `
 Sighting: ${reportData.animalName || 'Unknown'}
 Coordinates: ${reportData.latitude}, ${reportData.longitude}
 Notes: ${reportData.notes}
@@ -317,95 +265,20 @@ Timestamp: ${new Date(reportData.timestamp).toLocaleString()}
 
 IMPORTANT: Please attach the photo of the sighting to this email manually.
 --------------------------------------
-                `;
-                const mailtoLink = `mailto:wildlifewatchgy@gmail.com?subject=New Wildlife Sighting: ${reportData.animalName || 'Unknown'}&body=${encodeURIComponent(emailBody)}`;
-                window.location.href = mailtoLink;
-                form.reset();
-                preview.classList.add('hidden');
-                aiSuggestBtn.disabled = true;
-                factsContainer.classList.add('hidden');
-                animalFactsDiv.innerHTML = '';
-            } else {
-                showToast('You are offline. Saving report to send later.', 'success');
-                const reader = new FileReader();
-                reader.onloadend = async () => {
-                    const report = { ...reportData, photo: reader.result };
-                    try {
-                        await saveReport(report);
-                        form.reset();
-                        preview.classList.add('hidden');
-                        aiSuggestBtn.disabled = true;
-                        factsContainer.classList.add('hidden');
-                        animalFactsDiv.innerHTML = '';
-                        loadPendingReports();
-                    } catch (err) {
-                        showToast('Failed to save report locally.', 'error');
-                        console.error(err);
-                    }
-                };
-                reader.readAsDataURL(photoFile);
-            }
+            `;
+            const mailtoLink = `mailto:wildlifewatchgy@gmail.com?subject=New Wildlife Sighting: ${reportData.animalName || 'Unknown'}&body=${encodeURIComponent(emailBody)}`;
+            window.location.href = mailtoLink;
+            form.reset();
+            preview.classList.add('hidden');
+            aiSuggestBtn.disabled = true;
+            factsContainer.classList.add('hidden');
+            animalFactsDiv.innerHTML = '';
         });
 
-        // --- Display & Sync Reports ---
-        async function loadPendingReports() {
-            try {
-                const reports = await getPendingReports();
-                pendingReportsContainer.innerHTML = '';
-                if (reports.length === 0) {
-                    pendingReportsContainer.innerHTML = '<p class="text-gray-500">No pending reports.</p>';
-                    syncButton.classList.add('hidden');
-                } else {
-                    syncButton.classList.remove('hidden');
-                    reports.forEach(report => {
-                        const reportEl = document.createElement('div');
-                        reportEl.className = 'p-4 border rounded-lg bg-gray-50';
-                        reportEl.innerHTML = `
-                            <div class="flex items-start space-x-4">
-                                <img src="${report.photo}" class="w-20 h-20 object-cover rounded-md">
-                                <div class="flex-1">
-                                    <p class="font-bold">${report.animalName || 'Unnamed Sighting'}</p>
-                                    <p class="text-sm text-gray-600">Coords: ${report.latitude}, ${report.longitude}</p>
-                                    <p class="text-xs text-gray-400">Saved: ${new Date(report.timestamp).toLocaleString()}</p>
-                                </div>
-                            </div>
-                        `;
-                        pendingReportsContainer.appendChild(reportEl);
-                    });
-                }
-            } catch(err) {
-                 console.error('Failed to load reports:', err);
-            }
-        }
-        
-        syncButton.addEventListener('click', syncReports);
-
-        async function syncReports() {
-            if (!navigator.onLine) { showToast('You are offline. Cannot sync.', 'error'); return; }
-            const reports = await getPendingReports();
-            if (reports.length === 0) { showToast('No reports to sync.', 'success'); return; }
-            showToast(`Syncing ${reports.length} reports...`, 'success');
-            let emailBody = reports.map(report => `
-Sighting: ${report.animalName || 'Unknown'}
-Coordinates: ${report.latitude}, ${report.longitude}
-Notes: ${report.notes}
-Timestamp: ${new Date(report.timestamp).toLocaleString()}
-(Image data is not included in this email)
---------------------------------------
-            `).join('');
-            const mailtoLink = `mailto:wildlifewatchgy@gmail.com?subject=Wildlife Sightings Sync&body=${encodeURIComponent(emailBody)}`;
-            window.location.href = mailtoLink;
-            setTimeout(async () => {
-                for(const report of reports) { await deleteReport(report.id); }
-                showToast('Sync complete! Local reports cleared.', 'success');
-                loadPendingReports();
-            }, 2000);
-        }
-        
         // --- Gemini API Calls ---
         // IMPORTANT: To enable AI features, you must add your Google Gemini API key here.
         // Get your key from Google AI Studio: https://aistudio.google.com/app/apikey
-        const GEMINI_API_KEY = ""; // <-- PASTE YOUR KEY BETWEEN THE QUOTES
+        const GEMINI_API_KEY = "gen-lang-client-0520691828"; // <-- PASTE YOUR KEY BETWEEN THE QUOTES
         
         async function geminiApiCall(payload, model = 'gemini-2.5-flash-preview-05-20') {
              if (!GEMINI_API_KEY) {
@@ -421,12 +294,21 @@ Timestamp: ${new Date(report.timestamp).toLocaleString()}
             if (!response.ok) { throw new Error(`API call failed with status ${response.status}`); }
             return response.json();
         }
-
-        aiSuggestBtn.addEventListener('click', async () => {
+        
+        async function triggerAiSuggestion() {
             const photoFile = photoInput.files[0];
-            if (!photoFile) { showToast('Please upload a photo first.', 'error'); return; }
+            if (!photoFile) { 
+                showToast('Please upload a photo first.', 'error'); 
+                return; 
+            }
+            if (!navigator.onLine) {
+                showToast('AI features require an internet connection.', 'error');
+                return;
+            }
+
             aiSuggestBtn.textContent = 'Analyzing...';
             aiSuggestBtn.disabled = true;
+            
             const reader = new FileReader();
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
@@ -446,7 +328,9 @@ Timestamp: ${new Date(report.timestamp).toLocaleString()}
                 }
             };
             reader.readAsDataURL(photoFile);
-        });
+        }
+
+        aiSuggestBtn.addEventListener('click', triggerAiSuggestion);
 
         getFactsBtn.addEventListener('click', async () => {
             const animalName = animalNameInput.value;
@@ -514,12 +398,8 @@ Timestamp: ${new Date(report.timestamp).toLocaleString()}
 
         // --- Initial Load ---
         document.addEventListener('DOMContentLoaded', async () => {
-            await openDB();
-            loadPendingReports();
             updateClock();
             setInterval(updateClock, 1000);
-            window.addEventListener('online', () => syncButton.classList.remove('hidden'));
-            window.addEventListener('offline', () => syncButton.classList.add('hidden'));
         });
     </script>
 </body>
