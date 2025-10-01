@@ -51,7 +51,7 @@
         <!-- Header -->
         <header class="bg-green-600 text-white rounded-lg shadow-lg p-6 mb-6 text-center">
             <h1 class="text-4xl font-bold">Wildlife Watch Guyana</h1>
-            <p class="text-green-200 mt-2">Online wildlife sighting and reporting app.</p>
+            <p class="text-green-200 mt-2">Online and offline wildlife sighting and reporting app.</p>
             <div id="clock" class="text-sm text-green-100 mt-4 font-mono"></div>
         </header>
 
@@ -99,6 +99,17 @@
             </form>
         </main>
         
+        <!-- Pending Reports -->
+        <section id="pending-reports-section" class="mt-8 bg-white p-6 rounded-lg shadow-md hidden">
+            <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Pending Reports (Offline)</h2>
+            <div id="pending-list" class="space-y-4">
+                <p class="text-gray-500">No reports saved offline.</p>
+            </div>
+            <button id="sync-reports-btn" class="w-full mt-4 py-3 px-4 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition hidden">
+                Sync Pending Reports
+            </button>
+        </section>
+
         <!-- Install App Button -->
          <div class="mt-6 text-center">
             <button id="install-button" class="py-3 px-6 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition">
@@ -140,11 +151,9 @@
         const installButton = document.getElementById('install-button');
 
         window.addEventListener('load', () => {
-            // Hide install button if app is already installed
             if (window.matchMedia('(display-mode: standalone)').matches) {
                 installButton.style.display = 'none';
             }
-            // Register the service worker
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('./service-worker.js')
                     .then(reg => console.log('Service worker registered successfully', reg))
@@ -162,7 +171,6 @@
           if (deferredPrompt) {
             deferredPrompt.prompt();
             const { outcome } = await deferredPrompt.userChoice;
-            console.log(`User response to the install prompt: ${outcome}`);
             deferredPrompt = null;
             installButton.style.display = 'none';
           } else {
@@ -193,6 +201,9 @@
         const askGeminiBtn = document.getElementById('ask-gemini-btn');
         const guidanceQueryInput = document.getElementById('guidance-query');
         const guidanceResponseDiv = document.getElementById('guidance-response');
+        const pendingReportsSection = document.getElementById('pending-reports-section');
+        const pendingList = document.getElementById('pending-list');
+        const syncReportsBtn = document.getElementById('sync-reports-btn');
         
         // --- Image & Geotag Handling ---
         photoInput.addEventListener('change', handleImageUpload);
@@ -205,7 +216,6 @@
                 preview.src = e.target.result;
                 preview.classList.remove('hidden');
                 aiSuggestBtn.disabled = false;
-                // Automatically get suggestion if online
                 triggerAiSuggestion();
             };
             reader.readAsDataURL(file);
@@ -237,18 +247,13 @@
         // --- Form Submission ---
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const photoFile = photoInput.files[0];
-            if (!photoFile) {
+            if (!photoInput.files[0]) {
                 showToast('Please upload a photo.', 'error');
                 return;
             }
 
-            if (!navigator.onLine) {
-                showToast('You are offline. Please connect to the internet to send a report.', 'error');
-                return;
-            }
-            
             const reportData = {
+                id: Date.now(),
                 latitude: latitudeInput.value,
                 longitude: longitudeInput.value,
                 animalName: animalNameInput.value,
@@ -256,6 +261,24 @@
                 timestamp: new Date().toISOString()
             };
 
+            if (navigator.onLine) {
+                sendReportEmail(reportData);
+            } else {
+                const reports = getOfflineReports();
+                reports.push(reportData);
+                saveOfflineReports(reports);
+                renderPendingReports();
+                showToast('Offline. Report saved locally!', 'success');
+            }
+            
+            form.reset();
+            preview.classList.add('hidden');
+            aiSuggestBtn.disabled = true;
+            factsContainer.classList.add('hidden');
+            animalFactsDiv.innerHTML = '';
+        });
+
+        function sendReportEmail(reportData) {
             showToast('Preparing email...', 'success');
             let emailBody = `
 Sighting: ${reportData.animalName || 'Unknown'}
@@ -268,17 +291,48 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
             `;
             const mailtoLink = `mailto:wildlifewatchgy@gmail.com?subject=New Wildlife Sighting: ${reportData.animalName || 'Unknown'}&body=${encodeURIComponent(emailBody)}`;
             window.location.href = mailtoLink;
-            form.reset();
-            preview.classList.add('hidden');
-            aiSuggestBtn.disabled = true;
-            factsContainer.classList.add('hidden');
-            animalFactsDiv.innerHTML = '';
+        }
+
+        // --- Offline Reports Logic ---
+        function getOfflineReports() {
+            return JSON.parse(localStorage.getItem('pendingReports') || '[]');
+        }
+
+        function saveOfflineReports(reports) {
+            localStorage.setItem('pendingReports', JSON.stringify(reports));
+        }
+
+        function renderPendingReports() {
+            const reports = getOfflineReports();
+            if (reports.length > 0) {
+                pendingReportsSection.classList.remove('hidden');
+                syncReportsBtn.classList.remove('hidden');
+                pendingList.innerHTML = reports.map(report => `
+                    <div class="p-4 bg-gray-50 rounded-lg border">
+                        <p class="font-semibold">${report.animalName || 'Unknown Sighting'}</p>
+                        <p class="text-sm text-gray-600">${new Date(report.timestamp).toLocaleString()}</p>
+                        <p class="text-xs text-gray-500">Coords: ${report.latitude}, ${report.longitude}</p>
+                    </div>
+                `).join('');
+            } else {
+                pendingReportsSection.classList.add('hidden');
+            }
+        }
+
+        syncReportsBtn.addEventListener('click', () => {
+            if (!navigator.onLine) {
+                showToast('Please connect to the internet to sync reports.', 'error');
+                return;
+            }
+            const reports = getOfflineReports();
+            reports.forEach(sendReportEmail);
+            saveOfflineReports([]);
+            renderPendingReports();
+            showToast('All pending reports have been opened in your email client.', 'success');
         });
 
         // --- Gemini API Calls ---
-        // IMPORTANT: To enable AI features, you must add your Google Gemini API key here.
-        // Get your key from Google AI Studio: https://aistudio.google.com/app/apikey
-        const GEMINI_API_KEY = "AIzaSyBtb1rqWWmjUhARaXRdRRsZI9S0N0KzhFo"; // <-- PASTE YOUR KEY BETWEEN THE QUOTES
+        const GEMINI_API_KEY = "AIzaSyBtb1rqWWmjUhARaXRdRRsZI9S0N0KzhFo";
         
         async function geminiApiCall(payload, model = 'gemini-2.5-flash-preview-05-20') {
              if (!GEMINI_API_KEY) {
@@ -297,14 +351,7 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
         
         async function triggerAiSuggestion() {
             const photoFile = photoInput.files[0];
-            if (!photoFile) { 
-                showToast('Please upload a photo first.', 'error'); 
-                return; 
-            }
-            if (!navigator.onLine) {
-                showToast('AI features require an internet connection.', 'error');
-                return;
-            }
+            if (!photoFile || !navigator.onLine) return;
 
             aiSuggestBtn.textContent = 'Analyzing...';
             aiSuggestBtn.disabled = true;
@@ -400,6 +447,7 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
         document.addEventListener('DOMContentLoaded', async () => {
             updateClock();
             setInterval(updateClock, 1000);
+            renderPendingReports();
         });
     </script>
 </body>
