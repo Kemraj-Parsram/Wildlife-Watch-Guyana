@@ -77,12 +77,23 @@
                     </div>
                 </div>
 
+                <div id="map-link-container" class="hidden">
+                    <a id="map-link" href="#" target="_blank" class="inline-block w-full text-center py-2 px-4 bg-cyan-500 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 transition">
+                        View Sighting Location on Google Maps
+                    </a>
+                </div>
+
                 <div>
                     <label for="animal-name" class="block text-sm font-medium text-gray-700">Animal Name (or best guess)</label>
                     <div class="flex items-center space-x-2 mt-1">
                         <input type="text" id="animal-name" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500" placeholder="e.g., Jaguar">
                         <button type="button" id="ai-suggest-btn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition disabled:opacity-50" disabled>Get AI Suggestion</button>
                     </div>
+                </div>
+                
+                <div>
+                    <label for="scientific-name" class="block text-sm font-medium text-gray-700">Scientific Name</label>
+                    <input type="text" id="scientific-name" class="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm" placeholder="e.g., Panthera onca" readonly>
                 </div>
                  
                 <div id="facts-container" class="hidden">
@@ -190,6 +201,7 @@
         const latitudeInput = document.getElementById('latitude');
         const longitudeInput = document.getElementById('longitude');
         const animalNameInput = document.getElementById('animal-name');
+        const scientificNameInput = document.getElementById('scientific-name');
         const notesInput = document.getElementById('notes');
         const aiSuggestBtn = document.getElementById('ai-suggest-btn');
         const getFactsBtn = document.getElementById('get-facts-btn');
@@ -204,6 +216,8 @@
         const pendingReportsSection = document.getElementById('pending-reports-section');
         const pendingList = document.getElementById('pending-list');
         const syncReportsBtn = document.getElementById('sync-reports-btn');
+        const mapLinkContainer = document.getElementById('map-link-container');
+        const mapLink = document.getElementById('map-link');
         
         // --- Image & Geotag Handling ---
         photoInput.addEventListener('change', handleImageUpload);
@@ -221,6 +235,7 @@
             reader.readAsDataURL(file);
             latitudeInput.value = '';
             longitudeInput.value = '';
+            mapLinkContainer.classList.add('hidden');
             EXIF.getData(file, function() {
                 const lat = EXIF.getTag(this, "GPSLatitude");
                 const lon = EXIF.getTag(this, "GPSLongitude");
@@ -231,6 +246,7 @@
                     const longitude = convertDMSToDD(lon[0], lon[1], lon[2], lonRef);
                     latitudeInput.value = latitude.toFixed(6);
                     longitudeInput.value = longitude.toFixed(6);
+                    updateMapLink(latitude, longitude);
                     showToast('GPS coordinates extracted from photo!', 'success');
                 } else {
                     showToast('No GPS data found in photo. Please enter manually.', 'error');
@@ -243,6 +259,9 @@
             if (direction === "S" || direction === "W") { dd = dd * -1; }
             return dd;
         }
+
+        latitudeInput.addEventListener('input', () => updateMapLink(latitudeInput.value, longitudeInput.value));
+        longitudeInput.addEventListener('input', () => updateMapLink(latitudeInput.value, longitudeInput.value));
 
         // --- Form Submission ---
         form.addEventListener('submit', async (event) => {
@@ -257,6 +276,7 @@
                 latitude: latitudeInput.value,
                 longitude: longitudeInput.value,
                 animalName: animalNameInput.value,
+                scientificName: scientificNameInput.value,
                 notes: notesInput.value,
                 timestamp: new Date().toISOString()
             };
@@ -272,16 +292,19 @@
             }
             
             form.reset();
+            scientificNameInput.value = '';
             preview.classList.add('hidden');
             aiSuggestBtn.disabled = true;
             factsContainer.classList.add('hidden');
             animalFactsDiv.innerHTML = '';
+            mapLinkContainer.classList.add('hidden');
         });
 
         function sendReportEmail(reportData) {
             showToast('Preparing email...', 'success');
             let emailBody = `
 Sighting: ${reportData.animalName || 'Unknown'}
+Scientific Name: ${reportData.scientificName || 'N/A'}
 Coordinates: ${reportData.latitude}, ${reportData.longitude}
 Notes: ${reportData.notes}
 Timestamp: ${new Date(reportData.timestamp).toLocaleString()}
@@ -310,6 +333,7 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
                 pendingList.innerHTML = reports.map(report => `
                     <div class="p-4 bg-gray-50 rounded-lg border">
                         <p class="font-semibold">${report.animalName || 'Unknown Sighting'}</p>
+                        <p class="text-sm text-gray-500 italic">${report.scientificName || 'No scientific name'}</p>
                         <p class="text-sm text-gray-600">${new Date(report.timestamp).toLocaleString()}</p>
                         <p class="text-xs text-gray-500">Coords: ${report.latitude}, ${report.longitude}</p>
                     </div>
@@ -359,16 +383,33 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
             const reader = new FileReader();
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
-                const payload = { contents: [{ parts: [ { text: "Identify the animal in this photo. Provide only the common name." }, { inlineData: { mimeType: photoFile.type, data: base64Data } } ] }] };
+                const payload = {
+                    contents: [{
+                        parts: [{
+                            text: "Identify the animal in this photo. Respond with ONLY a JSON object containing two keys: 'commonName' and 'scientificName'. For example: {\"commonName\": \"Jaguar\", \"scientificName\": \"Panthera onca\"}"
+                        }, {
+                            inlineData: {
+                                mimeType: photoFile.type,
+                                data: base64Data
+                            }
+                        }]
+                    }]
+                };
                 try {
                     const result = await geminiApiCall(payload);
-                    const animalName = result.candidates[0].content.parts[0].text.trim();
-                    animalNameInput.value = animalName;
+                    const responseText = result.candidates[0].content.parts[0].text.trim().replace(/```json/g, '').replace(/```/g, '');
+                    const animalData = JSON.parse(responseText);
+                    
+                    animalNameInput.value = animalData.commonName || 'Unknown';
+                    scientificNameInput.value = animalData.scientificName || 'Unknown';
+                    
                     factsContainer.classList.remove('hidden');
                     showToast('AI suggestion received!', 'success');
                 } catch (error) {
                     console.error('Gemini API error:', error);
                     showToast('Could not get AI suggestion.', 'error');
+                    animalNameInput.value = '';
+                    scientificNameInput.value = '';
                 } finally {
                     aiSuggestBtn.textContent = 'Get AI Suggestion';
                     aiSuggestBtn.disabled = false;
@@ -437,6 +478,15 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
             setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
         }
         
+        function updateMapLink(lat, lon) {
+            if (lat && lon && !isNaN(lat) && !isNaN(lon)) {
+                mapLink.href = `https://www.google.com/maps?q=${lat},${lon}&z=15`;
+                mapLinkContainer.classList.remove('hidden');
+            } else {
+                mapLinkContainer.classList.add('hidden');
+            }
+        }
+
         function updateClock() {
             const clockEl = document.getElementById('clock');
             const options = { timeZone: 'America/Guyana', hour12: true, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' };
