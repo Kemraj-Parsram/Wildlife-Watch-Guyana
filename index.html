@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -6,7 +6,7 @@
     <title>Wildlife Watch Guyana</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="manifest" href="./manifest.json">
+    <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#22c55e">
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -51,7 +51,8 @@
         </header>
 
         <!-- Install App Button -->
-        <div id="install-container" class="text-center mb-4">
+        <div id="install-container" class="text-center mb-4 bg-gray-200 p-4 rounded-lg">
+            <p class="text-sm text-gray-600 mb-2">For the best experience, install the app on your device. The download button will appear below if your browser supports it.</p>
             <button id="install-btn" class="hidden w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-300 ease-in-out flex items-center justify-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
                 Download App for Offline Use
@@ -328,7 +329,8 @@
         // --- Core App Logic ---
         function registerServiceWorker() {
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('service-worker.js')
+                // Use a path relative to the origin to avoid issues with blob URLs in preview environments.
+                navigator.serviceWorker.register('/service-worker.js')
                     .then(reg => console.log('Service worker registration successful:', reg))
                     .catch(err => console.error('Service worker registration failed:', err));
             }
