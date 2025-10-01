@@ -1,6 +1,15 @@
-const CACHE_NAME = 'wildlife-watch-v2';
+// A service worker is a script that your browser runs in the background,
+// separate from a web page, enabling features that don't need a web page or
+// user interaction. For this app, it's the core of the offline functionality.
+
+// CACHE_NAME is a unique identifier for the cache storage.
+// When you update the service worker with new files, you should change this name.
+// This tells the browser to discard the old cache and fetch the new files.
+const CACHE_NAME = 'wildlife-watch-v3';
+
+// urlsToCache is a list of essential files needed for the app's shell to work offline.
 const urlsToCache = [
-  './',
+  './', // Caches the root URL of the app
   './index.html',
   './manifest.json',
   'https://cdn.tailwindcss.com',
@@ -8,41 +17,79 @@ const urlsToCache = [
   'https://placehold.co/192x192/22c55e/ffffff?text=WWG'
 ];
 
+// The 'install' event is the first event a service worker gets.
+// It's only called once per service worker.
 self.addEventListener('install', event => {
+  console.log('Service Worker: Installing...');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
+        console.log('Service Worker: Caching app shell');
+        // addAll() fetches all the URLs in the list and stores them in the cache.
         return cache.addAll(urlsToCache);
+      })
+      .then(() => {
+        // self.skipWaiting() forces the waiting service worker to become the
+        // active service worker. This makes updates to your app faster.
+        return self.skipWaiting();
       })
   );
 });
 
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      }
-    )
-  );
-});
-
+// The 'activate' event is fired when the service worker starts up.
+// It's a good place to manage old caches.
 self.addEventListener('activate', event => {
+  console.log('Service Worker: Activating...');
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
+          // If a cache is found that is not in our whitelist, we delete it.
+          // This removes old, unused cache files and saves space.
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('Service Worker: Deleting old cache', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => {
+      // self.clients.claim() makes the service worker take control of all open
+      // client pages without needing a reload.
+      return self.clients.claim();
     })
+  );
+});
+
+// The 'fetch' event fires every time the app requests a resource (like a page, script, or image).
+// We can intercept these requests and decide how to respond.
+self.addEventListener('fetch', event => {
+  // This is a "Stale-While-Revalidate" strategy.
+  // It provides a fast "cache-first" response, while also keeping the cache
+  // updated in the background for next time.
+  event.respondWith(
+    caches.match(event.request)
+      .then(cachedResponse => {
+        // Try to fetch the resource from the network.
+        const fetchPromise = fetch(event.request).then(
+          networkResponse => {
+            // If the fetch is successful, we open our cache and put the new
+            // response in it for future use.
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(event.request, networkResponse.clone());
+            });
+            return networkResponse;
+          }
+        );
+
+        // Return the response from cache immediately if it exists,
+        // otherwise, wait for the network response.
+        return cachedResponse || fetchPromise;
+      }).catch(() => {
+        // If both cache and network fail (e.g., completely offline with an uncached page),
+        // you could return a fallback offline page here, though it's not implemented
+        // in this version.
+      })
   );
 });
 
