@@ -1,57 +1,95 @@
-const CACHE_NAME = 'wildlife-watch-guyana-v1';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-  'https://cdn.tailwindcss.com',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+const CACHE_NAME = 'wildlife-watch-guyana-v3'; // Increased version to ensure updates
+const ASSETS_TO_CACHE = [
+    './',
+    './index.html',
+    './manifest.json', // Added manifest to cache
+    'https://cdn.tailwindcss.com',
+    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+    'https://placehold.co/192x192/16a34a/ffffff?text=WGY', // Cache app icon
+    'https://placehold.co/512x512/16a34a/ffffff?text=WGY'  // Cache large app icon
 ];
 
-// Install the service worker and cache all the app's assets
+// Handles the installation of the service worker, caching the core assets.
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
+    event.waitUntil(
+        caches.open(CACHE_NAME)
+            .then(cache => {
+                console.log('Service Worker: Caching core app assets.');
+                return cache.addAll(ASSETS_TO_CACHE);
+            })
+            .then(() => self.skipWaiting()) // Activate new service worker immediately
+    );
 });
 
-// Fetch event: serve assets from cache if available, otherwise fetch from network
+// Handles the activation of the service worker, cleaning up old caches.
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        caches.keys().then(cacheNames => {
+            return Promise.all(
+                cacheNames.map(cache => {
+                    if (cache !== CACHE_NAME) {
+                        console.log('Service Worker: Clearing old cache:', cache);
+                        return caches.delete(cache);
+                    }
+                })
+            );
+        }).then(() => self.clients.claim()) // Take control of all open clients
+    );
+});
+
+// Intercepts network requests and serves assets from the cache first.
 self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
+    // We only want to cache GET requests.
+    if (event.request.method !== 'GET') {
+        return;
+    }
 
-        // Clone the request because it's a stream and can only be consumed once
-        const fetchRequest = event.request.clone();
+    event.respondWith(
+        caches.match(event.request)
+            .then(cachedResponse => {
+                // If the asset is in the cache, return it.
+                if (cachedResponse) {
+                    return cachedResponse;
+                }
+                // Otherwise, fetch from the network.
+                return fetch(event.request);
+            })
+    );
+});
 
-        return fetch(fetchRequest).then(
-          response => {
-            // Check if we received a valid response
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
-
-            // Clone the response because it's also a stream
-            const responseToCache = response.clone();
-
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return response;
-          }
+// Listens for the 'sync' event to handle tasks when the connection is restored.
+self.addEventListener('sync', event => {
+    if (event.tag === 'send-reports') {
+        console.log('Service Worker: Background sync triggered for sending reports.');
+        // This event fires when connection is restored.
+        // The current app prompts the user to resend via a notification.
+        // A server-based app would automatically send data from IndexedDB here.
+        event.waitUntil(
+            self.registration.showNotification('You have pending reports', {
+                body: 'You are back online. Please open Wildlife Watch to send your saved reports.',
+                icon: 'https://placehold.co/192x192/16a34a/ffffff?text=WGY',
+                badge: 'https://placehold.co/192x192/16a34a/ffffff?text=WGY'
+            })
         );
-      })
-  );
+    }
+});
+
+// Handles clicks on notifications, focusing or opening the app.
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+            // If the app is already open, focus it.
+            for (const client of clientList) {
+                if (client.url === self.location.origin + '/index.html' && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            // Otherwise, open a new window.
+            if (clients.openWindow) {
+                return clients.openWindow('./index.html');
+            }
+        })
+    );
 });
 
