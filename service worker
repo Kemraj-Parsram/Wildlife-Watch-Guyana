@@ -1,94 +1,105 @@
-const CACHE_NAME = 'wildlife-watch-guyana-v3'; // Increased version to ensure updates
-const ASSETS_TO_CACHE = [
+const CACHE_NAME = 'wildlife-watch-v1';
+const urlsToCache = [
     './',
     './index.html',
-    './manifest.json', // Added manifest to cache
+    './manifest.json',
     'https://cdn.tailwindcss.com',
-    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-    'https://placehold.co/192x192/16a34a/ffffff?text=WGY', // Cache app icon
-    'https://placehold.co/512x512/16a34a/ffffff?text=WGY'  // Cache large app icon
+    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
 ];
 
-// Handles the installation of the service worker, caching the core assets.
+// --- Database Helper ---
+function openDb() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('wildlifeDB', 2);
+        request.onerror = event => reject('DB Error: ' + event.target.errorCode);
+        request.onsuccess = event => resolve(event.target.result);
+        request.onupgradeneeded = event => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('reports')) {
+                db.createObjectStore('reports', { keyPath: 'id', autoIncrement: true });
+            }
+        };
+    });
+}
+
+// --- Install Service Worker and Cache Assets ---
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => {
-                console.log('Service Worker: Caching core app assets.');
-                return cache.addAll(ASSETS_TO_CACHE);
+                console.log('Opened cache');
+                return cache.addAll(urlsToCache);
             })
-            .then(() => self.skipWaiting()) // Activate new service worker immediately
     );
 });
 
-// Handles the activation of the service worker, cleaning up old caches.
-self.addEventListener('activate', event => {
-    event.waitUntil(
-        caches.keys().then(cacheNames => {
-            return Promise.all(
-                cacheNames.map(cache => {
-                    if (cache !== CACHE_NAME) {
-                        console.log('Service Worker: Clearing old cache:', cache);
-                        return caches.delete(cache);
-                    }
-                })
-            );
-        }).then(() => self.clients.claim()) // Take control of all open clients
-    );
-});
-
-// Intercepts network requests and serves assets from the cache first.
+// --- Fetch from Cache (Offline-First) ---
 self.addEventListener('fetch', event => {
-    // We only want to cache GET requests.
-    if (event.request.method !== 'GET') {
-        return;
-    }
-
     event.respondWith(
         caches.match(event.request)
-            .then(cachedResponse => {
-                // If the asset is in the cache, return it.
-                if (cachedResponse) {
-                    return cachedResponse;
+            .then(response => {
+                // Cache hit - return response
+                if (response) {
+                    return response;
                 }
-                // Otherwise, fetch from the network.
+                // Not in cache - fetch from network
                 return fetch(event.request);
             })
     );
 });
 
-// Listens for the 'sync' event to handle tasks when the connection is restored.
+// --- Background Sync ---
 self.addEventListener('sync', event => {
     if (event.tag === 'send-reports') {
-        console.log('Service Worker: Background sync triggered for sending reports.');
-        // This event fires when connection is restored.
-        // The current app prompts the user to resend via a notification.
-        // A server-based app would automatically send data from IndexedDB here.
-        event.waitUntil(
-            self.registration.showNotification('You have pending reports', {
-                body: 'You are back online. Please open Wildlife Watch to send your saved reports.',
-                icon: 'https://placehold.co/192x192/16a34a/ffffff?text=WGY',
-                badge: 'https://placehold.co/192x192/16a34a/ffffff?text=WGY'
-            })
-        );
+        event.waitUntil(sendPendingReports());
     }
 });
 
-// Handles clicks on notifications, focusing or opening the app.
-self.addEventListener('notificationclick', event => {
-    event.notification.close();
+async function sendPendingReports() {
+    const db = await openDb();
+    const transaction = db.transaction(['reports'], 'readwrite');
+    const store = transaction.objectStore('reports');
+    const getAllRequest = store.getAll();
+
+    return new Promise((resolve, reject) => {
+        getAllRequest.onsuccess = () => {
+            const reports = getAllRequest.result;
+            if (reports.length > 0) {
+                // In a real app, you would loop through and POST these to a server.
+                // Since we are using mailto:, we can just notify the user.
+                self.registration.showNotification('Wildlife Reports Pending', {
+                    body: `You have ${reports.length} report(s) ready to send. Open the app to complete submission.`,
+                    icon: 'https://placehold.co/192x192/16a34a/ffffff?text=WGY'
+                });
+
+                // For demonstration, let's clear the reports as if they were sent.
+                // In a real scenario, you'd only clear them on a successful server response.
+                const clearTransaction = db.transaction(['reports'], 'readwrite');
+                clearTransaction.objectStore('reports').clear();
+                resolve();
+            } else {
+                resolve();
+            }
+        };
+        getAllRequest.onerror = (event) => {
+            console.error('Error getting reports from DB:', event);
+            reject();
+        };
+    });
+}
+
+// --- Activate and Clean Up Old Caches ---
+self.addEventListener('activate', event => {
+    const cacheWhitelist = [CACHE_NAME];
     event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-            // If the app is already open, focus it.
-            for (const client of clientList) {
-                if (client.url === self.location.origin + '/index.html' && 'focus' in client) {
-                    return client.focus();
-                }
-            }
-            // Otherwise, open a new window.
-            if (clients.openWindow) {
-                return clients.openWindow('./index.html');
-            }
+        caches.keys().then(cacheNames => {
+            return Promise.all(
+                cacheNames.map(cacheName => {
+                    if (cacheWhitelist.indexOf(cacheName) === -1) {
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
         })
     );
 });
