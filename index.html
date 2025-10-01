@@ -24,7 +24,7 @@
         }
         #error-modal, #success-modal, #info-modal { transition: opacity 0.3s ease-in-out; }
         .accordion-content {
-            transition: max-height 0.3s ease-out;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out;
             overflow: hidden;
         }
         #offline-indicator {
@@ -61,14 +61,16 @@
                     <span>Step 1: Select a Photo</span>
                     <svg class="w-5 h-5 transform transition-transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
                 </button>
-                <div id="step-1-content" class="accordion-content mt-4">
-                    <div class="bg-gray-50 p-6 rounded-lg border-2 border-dashed border-gray-300 text-center">
-                        <label for="wildlife-photo" class="cursor-pointer">
-                            <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                            <p class="mt-2 text-sm text-gray-600"><span class="font-semibold text-green-600">Click to upload</span> or take a photo</p>
-                            <p class="text-xs text-gray-500">PNG or JPG</p>
-                        </label>
-                        <input id="wildlife-photo" name="wildlife-photo" type="file" class="sr-only" accept="image/*" capture="environment">
+                <div id="step-1-content" class="accordion-content">
+                    <div class="pt-4">
+                        <div class="bg-gray-50 p-6 rounded-lg border-2 border-dashed border-gray-300 text-center">
+                            <label for="wildlife-photo" class="cursor-pointer">
+                                <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                                <p class="mt-2 text-sm text-gray-600"><span class="font-semibold text-green-600">Click to upload</span> or take a photo</p>
+                                <p class="text-xs text-gray-500">PNG or JPG</p>
+                            </label>
+                            <input id="wildlife-photo" name="wildlife-photo" type="file" class="sr-only" accept="image/*" capture="environment">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -86,8 +88,8 @@
                         <span>Step 2: Sighting Details</span>
                         <svg class="w-5 h-5 transform transition-transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
                     </button>
-                    <div id="step-2-content" class="accordion-content hidden mt-4">
-                        <div class="space-y-4">
+                    <div id="step-2-content" class="accordion-content">
+                        <div class="pt-4 space-y-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Identified Species (Scientific Name)</label>
                                 <p id="scientific-name" class="mt-1 text-lg font-semibold bg-green-50 p-3 rounded-md border border-green-200"></p>
@@ -115,8 +117,8 @@
                         <span>Step 3: Your Details (Optional)</span>
                         <svg class="w-5 h-5 transform transition-transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
                     </button>
-                    <div id="step-3-content" class="accordion-content hidden mt-4">
-                         <form id="contact-form" class="space-y-4">
+                    <div id="step-3-content" class="accordion-content">
+                         <form id="contact-form" class="pt-4 space-y-4">
                             <div><label for="user-name" class="block text-sm font-medium text-gray-700">Your Name</label><input type="text" id="user-name" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"></div>
                             <div><label for="user-contact" class="block text-sm font-medium text-gray-700">Email or Phone</label><input type="text" id="user-contact" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"></div>
                             <div><label for="user-notes" class="block text-sm font-medium text-gray-700">Additional Notes</label><textarea id="user-notes" rows="3" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500" placeholder="e.g., Animal behavior, time of day..."></textarea></div>
@@ -213,13 +215,11 @@
                 const content = document.getElementById(toggle.dataset.toggle);
                 const icon = toggle.querySelector('svg');
                 
+                // Set initial state
                 content.style.maxHeight = '0px';
-                // Initially open the first accordion
+                icon.classList.remove('rotate-180');
                 if (toggle.dataset.toggle === 'step-1-content') {
-                    content.style.maxHeight = content.scrollHeight + 'px';
-                     icon.classList.add('rotate-180');
-                } else {
-                    icon.classList.remove('rotate-180');
+                   expandAccordion('step-1-content');
                 }
 
                 toggle.addEventListener('click', () => {
@@ -263,7 +263,7 @@
             };
             request.onsuccess = event => { 
                 db = event.target.result; 
-                checkPendingReports(); // Check for reports once DB is ready
+                checkPendingReports();
             };
             request.onerror = event => console.error('DB Error:', event.target.errorCode);
         }
@@ -274,7 +274,7 @@
             const store = transaction.objectStore('reports');
             store.add(report);
             transaction.oncomplete = () => {
-                toggleModal(modals.info, true, "You are offline. Your report, including the image, has been saved. It will be sent automatically when you reconnect.");
+                toggleModal(modals.info, true, "You are offline. Your report has been saved and will be sent automatically when you reconnect.");
                 setTimeout(() => resetApp(false), 4000);
             };
             transaction.onerror = (e) => console.error('Error saving report offline:', e);
@@ -299,9 +299,9 @@
             getAllRequest.onsuccess = () => {
                 const reports = getAllRequest.result;
                 if (reports.length > 0) {
-                    toggleModal(modals.info, true, `You're back online! Please open the app and resubmit your ${reports.length} pending report(s).`);
-                    // In a real server-based app, we would auto-send here.
-                    // For mailto:, user interaction is required.
+                     // The service worker will show a notification.
+                     // A modal here could be disruptive if the user is already doing something.
+                     console.log(`${reports.length} pending reports to be sent.`);
                 }
             };
         }
@@ -384,7 +384,7 @@
             report.userName = elements.userName.value;
             report.userContact = elements.userContact.value;
             report.userNotes = elements.userNotes.value;
-            if (!report.latitude || !report.longitude) {
+            if (!report.latitude && !report.longitude) {
                 report.latitude = elements.manualLat.value || '6.8045'; // Default to Georgetown
                 report.longitude = elements.manualLon.value || '-58.1551';
             }
@@ -406,9 +406,6 @@
         function generateEmail(report) {
             const recipient = 'wildlifewatchgy@gmail.com';
             const subject = `Wildlife Sighting: ${report.scientificName || 'Unknown Species'}`;
-            // NOTE: Mailto links have a length limit and cannot attach files.
-            // This is a limitation of the web platform, not the code.
-            // We instruct the user to attach the image manually.
             const body = `A new wildlife sighting has been reported.\n\n--- Sighting Details ---\nSpecies (Scientific Name): ${report.scientificName}\nLocation (Lat, Lon): ${report.latitude}, ${report.longitude}\n\n--- Observer Details (Optional) ---\nName: ${report.userName || 'Not provided'}\nContact: ${report.userContact || 'Not provided'}\nNotes: \n${report.userNotes || 'None'}\n\n---\nReport generated by the Wildlife Watch Guyana App. Please attach the corresponding photo to this email before sending.`;
             
             toggleModal(modals.success, true);
