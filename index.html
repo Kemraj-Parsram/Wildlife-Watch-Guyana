@@ -403,7 +403,9 @@ Timestamp: ${new Date(report.timestamp).toLocaleString()}
         }
         
         // --- Gemini API Calls ---
-        const GEMINI_API_KEY = ""; // PASTE YOUR GEMINI API KEY HERE
+        // IMPORTANT: To enable AI features, you must add your Google Gemini API key here.
+        // Get your key from Google AI Studio: https://aistudio.google.com/app/apikey
+        const GEMINI_API_KEY = ""; // <-- PASTE YOUR KEY BETWEEN THE QUOTES
         
         async function geminiApiCall(payload, model = 'gemini-2.5-flash-preview-05-20') {
              if (!GEMINI_API_KEY) {
@@ -522,3 +524,4 @@ Timestamp: ${new Date(report.timestamp).toLocaleString()}
     </script>
 </body>
 </html>
+
