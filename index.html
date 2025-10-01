@@ -42,6 +42,9 @@
          .toast.success {
             background-color: #22c55e; /* green-500 */
         }
+        #map {
+            height: 300px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -64,6 +67,12 @@
                     <label for="photo" class="block text-sm font-medium text-gray-700">Upload Photo</label>
                     <input type="file" id="photo" accept="image/*" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" required>
                     <img id="preview" class="mt-4 rounded-lg hidden max-h-60 mx-auto" alt="Image preview">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Sighting Location</label>
+                    <p class="text-xs text-gray-500 mb-2">Tap on the map to select a location or enter coordinates manually.</p>
+                    <div id="map" class="w-full rounded-lg border"></div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -157,6 +166,15 @@
     </div>
 
     <script>
+        // --- API Keys Section ---
+        // IMPORTANT: To enable AI features, add your Google Gemini API key.
+        // Get your key from Google AI Studio: https://aistudio.google.com/app/apikey
+        const GEMINI_API_KEY = "AIzaSyBtb1rqWWmjUhARaXRdRRsZI9S0N0KzhFo";
+
+        // IMPORTANT: To enable the interactive map, add your Google Maps API key.
+        // Get your key from Google Cloud Console: https://console.cloud.google.com/google/maps-apis/overview
+        const GOOGLE_MAPS_API_KEY = ""; // <-- PASTE YOUR GOOGLE MAPS KEY HERE
+
         // --- PWA Service Worker & Install Logic ---
         let deferredPrompt;
         const installButton = document.getElementById('install-button');
@@ -219,6 +237,9 @@
         const mapLinkContainer = document.getElementById('map-link-container');
         const mapLink = document.getElementById('map-link');
         
+        let map;
+        let marker;
+
         // --- Image & Geotag Handling ---
         photoInput.addEventListener('change', handleImageUpload);
 
@@ -246,6 +267,7 @@
                     const longitude = convertDMSToDD(lon[0], lon[1], lon[2], lonRef);
                     latitudeInput.value = latitude.toFixed(6);
                     longitudeInput.value = longitude.toFixed(6);
+                    updateMapAndMarker(latitude, longitude);
                     updateMapLink(latitude, longitude);
                     showToast('GPS coordinates extracted from photo!', 'success');
                 } else {
@@ -260,8 +282,18 @@
             return dd;
         }
 
-        latitudeInput.addEventListener('input', () => updateMapLink(latitudeInput.value, longitudeInput.value));
-        longitudeInput.addEventListener('input', () => updateMapLink(latitudeInput.value, longitudeInput.value));
+        latitudeInput.addEventListener('input', () => {
+            const lat = latitudeInput.value;
+            const lon = longitudeInput.value;
+            updateMapLink(lat, lon);
+            updateMapAndMarker(lat, lon);
+        });
+        longitudeInput.addEventListener('input', () => {
+             const lat = latitudeInput.value;
+            const lon = longitudeInput.value;
+            updateMapLink(lat, lon);
+            updateMapAndMarker(lat, lon);
+        });
 
         // --- Form Submission ---
         form.addEventListener('submit', async (event) => {
@@ -298,6 +330,12 @@
             factsContainer.classList.add('hidden');
             animalFactsDiv.innerHTML = '';
             mapLinkContainer.classList.add('hidden');
+            if (marker) {
+                marker.setMap(null);
+                marker = null;
+            }
+            map.setCenter({ lat: 5.0, lng: -58.75 });
+            map.setZoom(6);
         });
 
         function sendReportEmail(reportData) {
@@ -356,8 +394,6 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
         });
 
         // --- Gemini API Calls ---
-        const GEMINI_API_KEY = "AIzaSyBtb1rqWWmjUhARaXRdRRsZI9S0N0KzhFo";
-        
         async function geminiApiCall(payload, model = 'gemini-2.5-flash-preview-05-20') {
              if (!GEMINI_API_KEY) {
                 showToast("Gemini API key is not set. Please add it to the script.", "error");
@@ -470,7 +506,7 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
         }
 
 
-        // --- Utilities ---
+        // --- Utilities & Map ---
         function showToast(message, type = '') {
             const toast = document.getElementById('toast');
             toast.textContent = message;
@@ -486,6 +522,47 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
                 mapLinkContainer.classList.add('hidden');
             }
         }
+        
+        function initMap() {
+            if (!GOOGLE_MAPS_API_KEY) {
+                document.getElementById('map').innerHTML = '<div class="flex items-center justify-center h-full bg-gray-200 text-gray-600 p-4 text-center">Please add a Google Maps API key to enable the interactive map.</div>';
+                return;
+            }
+
+            const guyanaCenter = { lat: 5.0, lng: -58.75 };
+            map = new google.maps.Map(document.getElementById("map"), {
+                zoom: 6,
+                center: guyanaCenter,
+            });
+
+            map.addListener("click", (e) => {
+                const lat = e.latLng.lat();
+                const lon = e.latLng.lng();
+                latitudeInput.value = lat.toFixed(6);
+                longitudeInput.value = lon.toFixed(6);
+                updateMapAndMarker(lat, lon);
+                updateMapLink(lat, lon);
+            });
+        }
+        
+        function updateMapAndMarker(lat, lon) {
+            const latNum = parseFloat(lat);
+            const lonNum = parseFloat(lon);
+            if (isNaN(latNum) || isNaN(lonNum)) return;
+            
+            const position = { lat: latNum, lng: lonNum };
+            
+            if (!marker) {
+                marker = new google.maps.Marker({
+                    position: position,
+                    map: map,
+                });
+            } else {
+                marker.setPosition(position);
+            }
+            map.setCenter(position);
+            map.setZoom(12);
+        }
 
         function updateClock() {
             const clockEl = document.getElementById('clock');
@@ -499,6 +576,20 @@ IMPORTANT: Please attach the photo of the sighting to this email manually.
             setInterval(updateClock, 1000);
             renderPendingReports();
         });
+    </script>
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=&callback=initMap">
+    </script>
+    <script>
+      // Function to inject the API key into the Google Maps script URL
+      function loadGoogleMaps() {
+        const script = document.querySelector('script[src*="maps.googleapis.com"]');
+        if (script) {
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap`;
+        }
+      }
+      // Call the function to load the script with the key
+      loadGoogleMaps();
     </script>
 </body>
 </html>
